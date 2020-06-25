@@ -143,12 +143,30 @@ function parseHeader(req, res)
 	end
 	local _GET = {}
 	if (vars ~= nil and vars ~= '') then
-		vars = urlDecode(vars)
 		for k, v in string.gmatch(vars, '([^&]+)=([^&]*)&*') do
-			_GET[k] = v
+			_GET[k] = urlDecode(v)
 		end
 	end
-	
+
+	if method == 'POST' then
+		local _, _, type = req.source:find("[Cc]ontent%-[Tt]ype:% (%S*)\r\n", 1)
+		local s, e = req.source:find("\r\n\r\n", 1)
+
+		if type ~= nil then
+			req.apptype=type
+		end
+
+		if e ~= nil then
+			local body = req.source:sub(e + 1, #(req.source))
+			req.body=body
+			if (type == 'application/x-www-form-urlencoded' and body ~= nil) then
+				for k, v in body:gmatch('([^&]+)=([^&]*)&*') do
+					_GET[k] = urlDecode(v)
+				end
+			end
+		end
+	end
+
 	req.method = method
 	req.query = _GET
 	req.path = path
@@ -197,7 +215,8 @@ function httpServer:listen(port)
 	self._srv = net.createServer(net.TCP)
 	self._srv:listen(port, function(conn)
 		conn:on('receive', function(skt, msg)	
-			local req = { source = msg, path = '', ip = skt:getpeer() }
+			local port, ip = skt:getpeer()
+			local req = { source = msg, path = '', ip = ip }
 			local res = Res:new(skt)
 			
 			for i = 1, #self._mids do
